@@ -3,7 +3,8 @@
 - **One watcher per settings file.** A second exits at once (code 3).
 - **It never opens a browser.** A lapsed sign-in is logged and notified once, and it keeps trying.
 - **It logs `alive` once an hour**, so a silent log means a stuck watcher, not a quiet page.
-- **A failure is notified once, until a pull succeeds again**, not every 15 minutes.
+- **A failure is notified only after three in a row** (a sign-in problem at once), and once until a run
+  succeeds. A single dropped connection that the next run gets past isn't something to act on (11 Nov 2026).
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ def watch(config: cfg.Config, notebook_for) -> int:
     log(f"watching '{config.notebook}' / '{config.section}' every {config.pull.every_minutes} min, "
         f"{'-'.join(config.pull.hours)}{' Mon-Fri' if config.pull.weekdays else ''}")
     next_pull, beat, failing = 0.0, time.time(), None
+    streak = 0   # failures in a row
     while True:
         if time.time() >= next_pull:
             next_pull = time.time() + config.pull.every_minutes * 60
@@ -44,7 +46,7 @@ def watch(config: cfg.Config, notebook_for) -> int:
                 try:
                     config = cfg.load(config.path)
                     pull(config, notebook_for(config), log=log)
-                    failing = None
+                    failing, streak = None, 0
                 except SignInNeeded as error:
                     log(f"sign-in needed: {error}")
                     if failing != "sign-in":
@@ -52,7 +54,8 @@ def watch(config: cfg.Config, notebook_for) -> int:
                     failing = "sign-in"
                 except Exception as error:
                     log(f"pull failed: {type(error).__name__}: {error}")
-                    if failing != type(error).__name__:
+                    streak += 1
+                    if streak == 3:
                         notify("onenote-sync couldn't pull", [f"{type(error).__name__}: {error}"[:300], f"Log: {config.log_file}"])
                     failing = type(error).__name__
         if time.time() - beat >= 3600:
