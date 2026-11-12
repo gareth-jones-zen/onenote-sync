@@ -206,7 +206,8 @@ def run_python(args) -> None:
     except ImportError:   # its key(), as win_background/locks.py has it
         def key(text):
             return hashlib.sha256(str(text).lower().encode()).hexdigest()[:16]
-    ea = pathlib.Path.home() / "OneDrive - Zen Internet" / "claude-executive-assistant" / "tools" / "onenote-sync.toml"
+    # the real settings path if ONENOTE_SYNC_CONFIG names it, so the check covers the watcher's own lock name
+    ea = pathlib.Path(os.environ.get("ONENOTE_SYNC_CONFIG") or pathlib.Path.home() / "Documents" / "onenote-sync.toml")
     results["keys"] = {str(path): key(pathlib.Path(path).resolve())
                        for path in (str(ea), str(ea).upper(), str(ea).replace("\\", "/"), "relative-settings.toml")}
     (PARITY / "python.json").write_text(json.dumps(results, ensure_ascii=True), encoding="utf-8")
