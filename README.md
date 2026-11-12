@@ -1,5 +1,11 @@
 # onenote-sync
 
+> **The `dotnet` branch is a port in progress** to .NET 11 with Native AOT: two exes
+> (`onenote-sync.exe`, and `onenote-sync-background.exe` for the logon task) with nothing to install
+> first, the same settings file, state file, task name, lock names and log lines. The Python version
+> on `main` (tagged `v0.1.0`) is the one in use. `parity/` holds the offline side-by-side checks
+> (recorded pages and fakes only; no page content is ever committed).
+
 For a team that writes a shared OneNote page each week, one heading per team:
 
 - **pull** keeps the newest pages as files, refreshed within minutes of an edit, for anything that

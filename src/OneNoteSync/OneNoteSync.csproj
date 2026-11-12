@@ -6,5 +6,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="OneNoteSync.Tests" />
+    <InternalsVisibleTo Include="onenote-sync-parity" />
   </ItemGroup>
 </Project>
