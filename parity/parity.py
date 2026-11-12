@@ -201,7 +201,11 @@ def run_python(args) -> None:
         sync._save(path, state)
         results["state"] = path.read_bytes().hex()
     # lock keys, as watch.py and cli.py make them: key(config.path), config.path resolved
-    from win_background import key
+    try:
+        from win_background import key
+    except ImportError:   # its key(), as win_background/locks.py has it
+        def key(text):
+            return hashlib.sha256(str(text).lower().encode()).hexdigest()[:16]
     ea = pathlib.Path.home() / "OneDrive - Zen Internet" / "claude-executive-assistant" / "tools" / "onenote-sync.toml"
     results["keys"] = {str(path): key(pathlib.Path(path).resolve())
                        for path in (str(ea), str(ea).upper(), str(ea).replace("\\", "/"), "relative-settings.toml")}

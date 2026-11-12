@@ -385,22 +385,19 @@ public class LockAndWatcherTests
         Assert.Equal(Locks.Key(@"C:\Users\x\tools\onenote-sync.toml"), Locks.Key(@"c:\users\X\TOOLS\onenote-sync.toml"));
 
     [Fact]
-    public async Task A_run_lock_is_released_on_the_thread_that_took_it()
+    public async Task A_run_lock_is_released_after_an_await()
     {
-        // WinBackground's NamedLock is a mutex, which only the acquiring thread can release (an await between
-        // acquiring and releasing would leave it held). The CLI takes and releases it synchronously on one thread,
-        // even around the Graph calls, which are waited on, not awaited; this does the same, then awaits, then
-        // checks another thread can take the lock.
+        // The run lock is a mutex. WinBackground's NamedLock owns it on a dedicated thread (since a1e4d97), so it's
+        // released even when the release runs on another thread after an await; before that the lock stayed held
+        // until the process exited. Acquire, await (yielding, so the continuation may move thread), release, then
+        // check another thread can take it.
         var name = "onenote-sync-test-" + Guid.NewGuid().ToString("N");
         var host = new CliHost();
-        await Task.Factory.StartNew(() =>
+        using (host.RunLock(name, 0))
         {
-            using (host.RunLock(name, 0))
-#pragma warning disable xUnit1031   // a synchronous wait inside the locked section is the point
-                Task.Delay(50, TestContext.Current.CancellationToken).GetAwaiter().GetResult();
-#pragma warning restore xUnit1031
-        }, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+            await Task.Yield();
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
         var acquired = false;
         var other = new Thread(() =>
         {
