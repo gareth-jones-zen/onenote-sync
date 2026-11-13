@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -117,13 +117,13 @@ public static partial class PageHtml
     {
         fragment = LineBreaks().Replace(fragment, "\n");
         fragment = PyHtml.Unescape(AnyTag().Replace(fragment, ""));
-        var lines = fragment.Split('\n').Select(line => Py.Strip(Spaces().Replace(line, " "))).Where(line => line.Length > 0);
+        var lines = fragment.Split('\n').Select(line => PyStr.Strip(Spaces().Replace(line, " "))).Where(line => line.Length > 0);
         return string.Join("\n", lines);
     }
 
     public static bool IsHeading(string element) =>
-        element.Length >= 2 && element[0] == '<' && Py.Lower(element[1].ToString()).StartsWith('p')
-        && Heading().IsMatch(element) && Py.Len(Text(element)) < 60;
+        element.Length >= 2 && element[0] == '<' && PyStr.Lower(element[1].ToString()).StartsWith('p')
+        && Heading().IsMatch(element) && PyStr.Length(Text(element)) < 60;
 
     /// <summary>The top-level blocks of every column (div), in order. &lt;br&gt; is skipped.</summary>
     public static List<Block> Blocks(string html)
@@ -159,7 +159,7 @@ public static partial class PageHtml
     }
 
     private static bool Same(string heading, string name) =>
-        Py.Lower(Py.Strip(Py.RStrip(Py.Strip(Text(heading)), "?:"))) == Py.Lower(Py.Strip(name));
+        PyStr.Lower(PyStr.Strip(PyStr.RStrip(PyStr.Strip(Text(heading)), "?:"))) == PyStr.Lower(PyStr.Strip(name));
 
     /// <summary>The heading called name and the blocks under it; (null, []) if there's none.</summary>
     public static (Block? Heading, List<Block> Under) Section(string html, string name)

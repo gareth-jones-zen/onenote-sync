@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 using Tomlyn;
 using Tomlyn.Model;
 
@@ -155,8 +155,8 @@ public sealed partial class Config
             var section = Str(qt["section"]);
             var headings = qt.TryGetValue("headings", out var hs) && hs is TomlArray array
                 ? array.Select(Str).ToList() : [];
-            if (headings.Count > 0 && !headings.Select(Py.Lower).Contains(Py.Lower(section)))
-                throw new UsageException($"[post] headings in {full} don't include your section, {Py.Repr(section)}.");
+            if (headings.Count > 0 && !headings.Select(PyStr.Lower).Contains(PyStr.Lower(section)))
+                throw new UsageException($"[post] headings in {full} don't include your section, {Py.ReprString(section)}.");
             post = new PostSettings(section, headings, Int(qt, "sprint_weeks", 2, full));
         }
 
@@ -220,7 +220,7 @@ public sealed partial class Config
                 long l => checked((int)l),
                 double d => checked((int)Math.Truncate(d)),
                 bool b => b ? 1 : 0,
-                string s => Py.Int(Py.Strip(s)),
+                string s => checked((int)PyStr.Int(s)),   // int() strips, and refuses "" as Python does
                 _ => throw new FormatException($"int() can't convert {key}"),
             };
         }
@@ -243,7 +243,7 @@ public sealed partial class Config
         if (!File.Exists(path))
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, Py.WindowsLines(Template), new UTF8Encoding(false));
+            File.WriteAllText(path, PyStr.WindowsNewlines(Template), new UTF8Encoding(false));
         }
         return path;
     }

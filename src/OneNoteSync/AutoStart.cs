@@ -1,4 +1,4 @@
-using OneNoteSync.Interim;
+using PyCompat;
 using WinBackground;
 
 namespace OneNoteSync;

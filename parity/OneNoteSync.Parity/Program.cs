@@ -7,7 +7,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OneNoteSync;
-using OneNoteSync.Interim;
+using PyCompat;
 using OneNoteSync.Tests;
 
 var parity = args.Length > 0 ? args[^1] : throw new ArgumentException("usage: onenote-sync-parity PARITY_DIR");

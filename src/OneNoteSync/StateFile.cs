@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using OneNoteSync.Interim;
+using System.Text.Json.Nodes;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -53,7 +54,20 @@ public static class StateFile
 
     /// <summary>The file's bytes for this state, as Python wrote them.</summary>
     public static byte[] Bytes(OrderedDictionary<string, OrderedDictionary<string, string>> state) =>
-        new UTF8Encoding(false).GetBytes(Py.WindowsLines(PyJson.NestedIndented(state)));
+        new UTF8Encoding(false).GetBytes(PyStr.WindowsNewlines(PyJson.Dump(ToJson(state), 2, ensureAscii: false)));
+
+    private static JsonObject ToJson(OrderedDictionary<string, OrderedDictionary<string, string>> state)
+    {
+        var json = new JsonObject();
+        foreach (var (page, sections) in state)
+        {
+            var entries = new JsonObject();
+            foreach (var (section, text) in sections)
+                entries[section] = text;
+            json[page] = entries;
+        }
+        return json;
+    }
 
     /// <summary>Replace the file through a .tmp beside it, so a crash never leaves half a file.</summary>
     public static void Save(string path, OrderedDictionary<string, OrderedDictionary<string, string>> state)

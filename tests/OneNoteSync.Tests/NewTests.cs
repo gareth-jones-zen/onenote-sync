@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using M365Graph;
-using OneNoteSync.Interim;
+using PyCompat;
 using WinBackground;
 using static OneNoteSync.Tests.Fixtures;
 
@@ -26,14 +26,14 @@ public class TextTests
 
     [Fact]
     public void Escape_touches_only_amp_lt_gt() =>
-        Assert.Equal("\u00a3 &amp; &lt;b&gt; \"q\" 'a' \u2013", Py.HtmlEscape("\u00a3 & <b> \"q\" 'a' \u2013"));
+        Assert.Equal("\u00a3 &amp; &lt;b&gt; \"q\" 'a' \u2013", PyHtml.Escape("\u00a3 & <b> \"q\" 'a' \u2013", quote: false));
 
     [Theory]
     [InlineData("\t", 4, "    ")]
     [InlineData("  \t", 4, "    ")]
     [InlineData(" \t \t", 4, "        ")]
     [InlineData("ab\tc", 8, "ab      c")]
-    public void ExpandTabs_works_by_column(string text, int size, string expected) => Assert.Equal(expected, Py.ExpandTabs(text, size));
+    public void ExpandTabs_works_by_column(string text, int size, string expected) => Assert.Equal(expected, PyStr.ExpandTabs(text, size));
 
     [Fact]
     public void A_tab_indent_nests_as_python_did()
@@ -46,7 +46,7 @@ public class TextTests
     public void Python_whitespace_includes_x1c_to_x1f()
     {
         Assert.Equal("a b", PageHtml.Text("<p>\x1c a\x1f\x1d b \x1e</p>"));
-        Assert.Equal("x", Py.Strip("\x1cx\u00a0"));
+        Assert.Equal("x", PyStr.Strip("\x1cx\u00a0"));
     }
 
     [Fact]
@@ -157,6 +157,29 @@ public class ConfigTests
         Assert.Contains("'Architecture'", Assert.Throws<UsageException>(() => Config.Load(temp.Combine("config.toml"))).Message);
     }
 
+    [Theory]
+    [InlineData("\"\"", "''")]
+    [InlineData("\"  \"", "'  '")]
+    [InlineData("\"2 x\"", "'2 x'")]
+    public void A_number_setting_that_isnt_one_is_refused_as_pythons_int_refuses_it(string value, string repr)
+    {
+        using var temp = new TempDir();
+        File.WriteAllText(temp.Combine("config.toml"), Settings.Replace("[pull]\n", $"[pull]\nnewest = {value}\n"));
+        Assert.EndsWith($"invalid literal for int() with base 10: {repr}",
+            Assert.Throws<UsageException>(() => Config.Load(temp.Combine("config.toml"))).Message);
+    }
+
+    [Theory]
+    [InlineData("\" 3 \"", 3)]
+    [InlineData("\"+1_0\"", 10)]
+    [InlineData("\"\u0663\"", 3)]
+    public void A_number_setting_as_text_is_read_as_pythons_int_reads_it(string value, int expected)
+    {
+        using var temp = new TempDir();
+        File.WriteAllText(temp.Combine("config.toml"), Settings.Replace("[pull]\n", $"[pull]\nnewest = {value}\n"));
+        Assert.Equal(expected, Config.Load(temp.Combine("config.toml")).Pull!.Newest);
+    }
+
     [Fact]
     public void The_file_name_takes_only_date() =>
         Assert.Equal("{x} 2026-11-09.html", Pull.FileName("{{x}} {date}.html", "2026-11-09"));
@@ -265,11 +288,17 @@ public class GraphNotebookTests
     {
         var handler = new Handler(answer);
         var waits = new List<TimeSpan>();
-        var raw = new RawGraph(_ => Task.FromResult("token"), new HttpClient(handler), (wait, _) => { waits.Add(wait); return Task.CompletedTask; },
+        var raw = Client(handler, (wait, _) => { waits.Add(wait); return Task.CompletedTask; },
             () => new DateTimeOffset(2026, 11, 13, 9, 0, 0, TimeSpan.Zero));
         var notebook = new GraphNotebook(_ => Empty(), raw, "a@b.c", "N", "S", wait => { waits.Add(wait); return Task.CompletedTask; });
         return (notebook, handler, waits);
     }
+
+    /// <summary>M365Graph's client over a fake handler, with a fake token (no MSAL, no cache file) and recorded waits.</summary>
+    private static M365Graph.GraphClient Client(HttpMessageHandler handler, Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Func<DateTimeOffset>? clock = null) =>
+        new(new M365Graph.GraphClientOptions { Log = _ => { } }, handler, (_, _) => Task.FromResult("token"),
+            delay ?? ((_, _) => Task.CompletedTask), clock);
 
     private static async IAsyncEnumerable<System.Text.Json.Nodes.JsonNode?> Empty()
     {
@@ -305,6 +334,28 @@ public class GraphNotebookTests
         Assert.Equal([1], notebook.Content("p"));
         Assert.Equal([TimeSpan.FromSeconds(7), TimeSpan.FromSeconds(10)], waits);
         Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public void A_get_is_tried_five_times_then_says_what_onenote_said()
+    {
+        var (notebook, handler, waits) = Make((_, _) => Answer(HttpStatusCode.ServiceUnavailable, Encoding.UTF8.GetBytes("busy")));
+        Assert.Equal(503, Assert.Throws<OneNoteException>(() => notebook.Content("p")).Status);
+        Assert.Equal(5, handler.Requests.Count);
+        Assert.Equal([5, 10, 15, 20], waits.Select(w => (int)w.TotalSeconds));
+    }
+
+    [Fact]
+    public void A_create_that_got_a_5xx_isnt_sent_again()
+    {
+        var handler = new Handler((_, _) => Answer(HttpStatusCode.GatewayTimeout));
+        var notebook = new GraphNotebook(
+            url => Items(url.Contains("/sections?") ? """[{"id":"s1","displayName":"S"}]""" : """[{"id":"n1","displayName":"n"}]"""),
+            Client(handler), "me", "N", "s", null);
+        Assert.EndsWith("(not sent again: it may have been applied)",
+            Assert.Throws<DeliveryUnknownException>(() => notebook.Create("<html></html>")).Message);
+        Assert.Single(handler.Requests);
+        Assert.Equal("text/html", handler.Requests[0].ContentType);
     }
 
     [Fact]
@@ -362,7 +413,7 @@ public class GraphNotebookTests
         var (notebook, handler, _) = Make((_, _) => Answer(HttpStatusCode.Created, Encoding.UTF8.GetBytes("{\"id\": \"0-new\"}")));
         var withSection = new GraphNotebook(
             url => Items(url.Contains("/sections?") ? """[{"id":"s1","displayName":"S"}]""" : """[{"id":"n1","displayName":"n"}]"""),
-            new RawGraph(_ => Task.FromResult("t"), new HttpClient(new Handler((_, _) => Answer(HttpStatusCode.Created, Encoding.UTF8.GetBytes("{\"id\": \"0-new\"}"))))),
+            Client(new Handler((_, _) => Answer(HttpStatusCode.Created, Encoding.UTF8.GetBytes("{\"id\": \"0-new\"}")))),
             "me", "N", "s", null);
         Assert.Equal("0-new", withSection.Create("<html>\u00a3</html>"));
         _ = notebook;

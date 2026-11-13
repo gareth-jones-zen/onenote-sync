@@ -1,4 +1,4 @@
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -63,7 +63,7 @@ public static class Pull
                 var close = template.IndexOf('}', i);
                 var field = close < 0 ? null : template[(i + 1)..close];
                 if (field != "date")
-                    throw new UsageException($"[pull] file {Py.Repr(template)} can only use {{date}}.");
+                    throw new UsageException($"[pull] file {Py.ReprString(template)} can only use {{date}}.");
                 result.Append(date);
                 i = close;
             }

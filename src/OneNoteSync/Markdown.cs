@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -40,12 +40,12 @@ public static partial class Markdown
     public static List<Bullet> Bullets(string markdown, string sectionName)
     {
         var lines = markdown.Replace("\r\n", "\n").Split('\n').ToList();
-        if (lines.Count > 0 && Py.Strip(lines[0]) == "---")   // frontmatter
+        if (lines.Count > 0 && PyStr.Strip(lines[0]) == "---")   // frontmatter
         {
             var end = 0;
             for (var i = 1; i < lines.Count; i++)
             {
-                if (Py.Strip(lines[i]) == "---")
+                if (PyStr.Strip(lines[i]) == "---")
                 {
                     end = i;
                     break;
@@ -53,19 +53,19 @@ public static partial class Markdown
             }
             lines = lines.Skip(end + 1).ToList();
         }
-        var start = lines.FindIndex(l => HeadingLine().IsMatch(l) && Py.Lower(Py.Strip(Py.LStrip(l, "#"))) == Py.Lower(sectionName));
+        var start = lines.FindIndex(l => HeadingLine().IsMatch(l) && PyStr.Lower(PyStr.Strip(PyStr.LStrip(l, "#"))) == PyStr.Lower(sectionName));
         if (start < 0)
             start = lines.FindIndex(l => HeadingLine().IsMatch(l));
         var found = new List<Bullet>();
         foreach (var line in lines.Skip(start + 1))
         {
-            if (HeadingLine().IsMatch(line) || Py.Strip(line) == "---")
+            if (HeadingLine().IsMatch(line) || PyStr.Strip(line) == "---")
                 break;
             var match = BulletLine().Match(line);
             if (match.Success)
-                found.Add(new Bullet(Math.Min(Py.Len(Py.ExpandTabs(match.Groups[1].Value, 4)) / 2, 3), Py.Strip(match.Groups[2].Value)));
-            else if (Py.Strip(line).Length > 0 && found.Count > 0)   // a wrapped continuation of the bullet above
-                found[^1] = found[^1] with { Text = found[^1].Text + " " + Py.Strip(line) };
+                found.Add(new Bullet(Math.Min(PyStr.Length(PyStr.ExpandTabs(match.Groups[1].Value, 4)) / 2, 3), PyStr.Strip(match.Groups[2].Value)));
+            else if (PyStr.Strip(line).Length > 0 && found.Count > 0)   // a wrapped continuation of the bullet above
+                found[^1] = found[^1] with { Text = found[^1].Text + " " + PyStr.Strip(line) };
         }
         return found;
     }
@@ -79,11 +79,11 @@ public static partial class Markdown
             if (part.Length == 0)
                 continue;
             if (part.StartsWith("**", StringComparison.Ordinal))
-                output.Append($"<span style=\"{BoldStyle}\">{Py.HtmlEscape(PySlice(part, 2, -2))}</span>");
+                output.Append($"<span style=\"{BoldStyle}\">{PyHtml.Escape(PySlice(part, 2, -2), quote: false)}</span>");
             else if (part.StartsWith('*') && part.EndsWith('*') && part.Length > 2)
-                output.Append($"<span style=\"{TextStyle};font-style:italic\">{Py.HtmlEscape(part[1..^1])}</span>");
+                output.Append($"<span style=\"{TextStyle};font-style:italic\">{PyHtml.Escape(part[1..^1], quote: false)}</span>");
             else
-                output.Append($"<span style=\"{TextStyle}\">{Py.HtmlEscape(part)}</span>");
+                output.Append($"<span style=\"{TextStyle}\">{PyHtml.Escape(part, quote: false)}</span>");
         }
         return output.ToString();
     }
@@ -134,10 +134,10 @@ public static partial class Markdown
         var body = new List<string>();
         for (var i = 0; i < names.Count; i++)
         {
-            body.Add((i == 0 ? TitleHeadingStart : TeamHeadingStart) + Py.HtmlEscape(names[i]) + HeadingEnd);
+            body.Add((i == 0 ? TitleHeadingStart : TeamHeadingStart) + PyHtml.Escape(names[i], quote: false) + HeadingEnd);
             body.Add("<br />");
         }
-        return "<!DOCTYPE html>\n<html>\n<head>\n<title>" + Py.HtmlEscape(title) + "</title>\n"
+        return "<!DOCTYPE html>\n<html>\n<head>\n<title>" + PyHtml.Escape(title, quote: false) + "</title>\n"
             + "</head>\n<body data-absolute-enabled=\"true\" style=\"font-family:Calibri;font-size:11pt\">\n"
             + "<div style=\"position:absolute;left:48px;top:115px;width:967px\">\n" + string.Join("\n", body) + "\n</div>\n</body>\n</html>";
     }

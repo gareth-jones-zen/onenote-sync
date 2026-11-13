@@ -1,5 +1,6 @@
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -16,14 +17,14 @@ public sealed record PatchChange(string? Target, string Action, string? Position
     /// <summary>The PATCH body, byte for byte what the Python's json.dumps(changes) sent: keys in the order
     /// target, action, (position), content; ", " and ": "; everything past ASCII as \uXXXX.</summary>
     public static string Body(IEnumerable<PatchChange> changes) =>
-        PyJson.ListOfObjects(changes.Select(c =>
+        PyJson.Dump(new JsonArray(changes.Select(c =>
         {
-            var pairs = new List<KeyValuePair<string, string?>> { new("target", c.Target), new("action", c.Action) };
+            var change = new JsonObject { ["target"] = c.Target, ["action"] = c.Action };
             if (c.Position is not null)
-                pairs.Add(new("position", c.Position));
-            pairs.Add(new("content", c.Content));
-            return (IReadOnlyList<KeyValuePair<string, string?>>)pairs;
-        }));
+                change["position"] = c.Position;
+            change["content"] = c.Content;
+            return (JsonNode?)change;
+        }).ToArray()));
 }
 
 /// <summary>The OneNote calls the tool makes: the seam the tests' fake notebook stands in for.</summary>

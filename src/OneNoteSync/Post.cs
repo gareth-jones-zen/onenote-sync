@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 

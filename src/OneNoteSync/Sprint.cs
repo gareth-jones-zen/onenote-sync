@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -15,7 +15,7 @@ public static partial class Sprint
     {
         if (DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             return date;
-        throw new UsageException($"Invalid isoformat string: {Py.Repr(text)}");
+        throw new UsageException($"Invalid isoformat string: {Py.ReprString(text)}");
     }
 
     /// <summary>The sprint number for a new week's page, from the pages before it, and how it was worked out.
@@ -30,7 +30,7 @@ public static partial class Sprint
         {
             var match = Number().Match(page.Title);
             if (match.Success && string.CompareOrdinal(page.Date, date) < 0)
-                numbered.Add((page.Date, Py.Int(match.Groups[1].Value)));
+                numbered.Add((page.Date, checked((int)PyStr.Int(match.Groups[1].Value))));
         }
         if (numbered.Count == 0)
             throw new UsageException("No earlier page has a sprint number in its title, so the new one can't be worked out.");

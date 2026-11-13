@@ -1,6 +1,5 @@
 using System.Reflection;
 using M365Graph;
-using OneNoteSync.Interim;
 using WinBackground;
 
 namespace OneNoteSync;
@@ -96,11 +95,11 @@ public static class Cli
                 host.Err.WriteLine($"{config.Path} has no [pull] section, so there's nothing to watch.");
                 return 2;
             }
-            var watchLog = PyLog(Logger.Create(config.LogFile, host.LogEcho));
+            var watchLog = Logger.Create(config.LogFile, host.LogEcho);
             return Watcher.Run(config, c => host.NotebookFor(c, false), watchLog, host.Watch);
         }
 
-        var log = PyLog(Logger.Create(config.LogFile, host.LogEcho, stampEcho: false));
+        var log = Logger.Create(config.LogFile, host.LogEcho, stampEcho: false);
         try
         {
             if (options.Command == "sign-in")
@@ -147,10 +146,6 @@ public static class Cli
             return 1;
         }
     }
-
-    /// <summary>The log as Python's wrote it: a message's own "\n"s became "\r\n" in the file and on the console
-    /// (text mode). WinBackground's logger writes them as they are, so they're translated first.</summary>
-    private static Action<string> PyLog(Action<string> log) => text => log(Py.WindowsLines(text));
 
     private static Options? Parse(IReadOnlyList<string> argv, CliHost host)
     {

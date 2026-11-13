@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using M365Graph;
-using OneNoteSync.Interim;
+using PyCompat;
 
 namespace OneNoteSync;
 
@@ -14,13 +14,18 @@ namespace OneNoteSync;
 /// - Pages are found by the date their title starts with, not by createdDateTime, which put an untitled page and a
 ///   May page first. Untitled pages and a "TEMPLATE" page are ignored.
 ///
-/// Page content isn't JSON, so it's fetched (and new pages sent) as raw bytes with the client's token.</summary>
+/// Page content isn't JSON, so it's fetched (and new pages sent) as raw bytes, through M365Graph's SendRawAsync with a
+/// retry policy per call: a GET is retried, a PATCH or POST only when it certainly wasn't applied.</summary>
 public sealed class GraphNotebook : IOneNote
 {
     public static readonly string[] Scopes = ["Notes.ReadWrite.All"];
 
+    /// <summary>Five tries in all, as the Python's _raw made.</summary>
+    private static readonly GraphRetryPolicy ReadPolicy = GraphRetryPolicy.Read with { Tries = 5 };
+    private static readonly GraphRetryPolicy WritePolicy = GraphRetryPolicy.Write with { Tries = 5 };
+
     private readonly Func<string, IAsyncEnumerable<JsonNode?>> pages;
-    private readonly RawGraph raw;
+    private readonly GraphClient raw;
     private readonly Func<TimeSpan, Task> delay;
     private readonly string root;
     private readonly string notebookName, sectionName;
@@ -28,15 +33,14 @@ public sealed class GraphNotebook : IOneNote
 
     /// <summary>owner is an email, or "me".</summary>
     public GraphNotebook(GraphClient graph, string owner, string notebook, string sectionName)
-        : this(url => graph.PagesAsync(url, Scopes),
-               new RawGraph(cancel => graph.TokenAsync(Scopes, null, cancel), RawGraph.CreateHttpClient()),
-               owner, notebook, sectionName, null)
+        : this(url => graph.PagesAsync(url, Scopes), graph, owner, notebook, sectionName, null)
     {
         Graph = graph;
     }
 
-    /// <summary>For tests: the paged GETs, the raw requests and the waits, all fakeable.</summary>
-    internal GraphNotebook(Func<string, IAsyncEnumerable<JsonNode?>> pages, RawGraph raw, string owner, string notebook,
+    /// <summary>For tests: the paged GETs, the raw requests (a GraphClient over a fake handler) and the waits, all
+    /// fakeable.</summary>
+    internal GraphNotebook(Func<string, IAsyncEnumerable<JsonNode?>> pages, GraphClient raw, string owner, string notebook,
         string sectionName, Func<TimeSpan, Task>? delay)
     {
         this.pages = pages;
@@ -81,11 +85,11 @@ public sealed class GraphNotebook : IOneNote
         if (section is null)
         {
             var notebooks = All($"{root}/notebooks?$select=id,displayName");
-            var notebook = notebooks.FirstOrDefault(n => Py.Lower(Name(n)) == Py.Lower(notebookName))
-                ?? throw new UsageException($"No notebook called {Py.Repr(notebookName)} (found: {string.Join(", ", notebooks.Select(Name))})");
+            var notebook = notebooks.FirstOrDefault(n => PyStr.Lower(Name(n)) == PyStr.Lower(notebookName))
+                ?? throw new UsageException($"No notebook called {Py.ReprString(notebookName)} (found: {string.Join(", ", notebooks.Select(Name))})");
             var sections = All($"{root}/notebooks/{(string?)notebook["id"]}/sections?$select=id,displayName");
-            var found = sections.FirstOrDefault(s => Py.Lower(Name(s)) == Py.Lower(sectionName))
-                ?? throw new UsageException($"No section called {Py.Repr(sectionName)} in {Py.Repr(notebookName)}");
+            var found = sections.FirstOrDefault(s => PyStr.Lower(Name(s)) == PyStr.Lower(sectionName))
+                ?? throw new UsageException($"No section called {Py.ReprString(sectionName)} in {Py.ReprString(notebookName)}");
             section = (string?)found["id"] ?? "";
         }
         return section;
@@ -103,7 +107,7 @@ public sealed class GraphNotebook : IOneNote
         {
             try
             {
-                return raw.SendAsync(HttpMethod.Get, url, null, null, RetryPolicy.Get).GetAwaiter().GetResult();
+                return Send(HttpMethod.Get, url, null, null);
             }
             catch (OneNoteException error) when (isNew && error.Status == 404 && attempt < tries - 1)
             {
@@ -113,14 +117,38 @@ public sealed class GraphNotebook : IOneNote
     }
 
     public void Patch(string pageId, IReadOnlyList<PatchChange> changes) =>
-        raw.SendAsync(HttpMethod.Patch, $"{root}/pages/{pageId}/content", Encoding.UTF8.GetBytes(PatchChange.Body(changes)),
-            "application/json", RetryPolicy.Write).GetAwaiter().GetResult();
+        Send(HttpMethod.Patch, $"{root}/pages/{pageId}/content", Encoding.UTF8.GetBytes(PatchChange.Body(changes)), "application/json");
 
     public string Create(string html)
     {
-        var body = raw.SendAsync(HttpMethod.Post, $"{root}/sections/{SectionId()}/pages", Encoding.UTF8.GetBytes(html), "text/html",
-            RetryPolicy.Write).GetAwaiter().GetResult();
+        var body = Send(HttpMethod.Post, $"{root}/sections/{SectionId()}/pages", Encoding.UTF8.GetBytes(html), "text/html");
         using var reply = JsonDocument.Parse(body);
         return reply.RootElement.GetProperty("id").GetString() ?? "";
+    }
+
+    /// <summary>Send, and return the reply's bytes. url is relative to Graph's v1.0 root ("/me/onenote/..."), as
+    /// error messages quote it. A GET (no body) is retried as Read; a PATCH or POST as Write. Throws OneNoteException
+    /// for an error answer, DeliveryUnknownException when a write may have been applied but got no answer (or a 5xx,
+    /// which isn't sent again), or the network error itself for a GET that kept failing.</summary>
+    private byte[] Send(HttpMethod method, string url, byte[]? body, string? contentType)
+    {
+        var write = method != HttpMethod.Get;
+        GraphRawResponse reply;
+        try
+        {
+            reply = raw.SendRawAsync(method, url, body, contentType, write ? WritePolicy : ReadPolicy, Scopes).GetAwaiter().GetResult();
+        }
+        catch (GraphDeliveryUnknownException error)
+        {
+            throw new DeliveryUnknownException(error.Message, error);
+        }
+        if (reply.IsSuccess)
+            return reply.Body;
+        var status = (int)reply.Status;
+        var detail = PyStr.Head(Encoding.UTF8.GetString(reply.Body), 300);
+        var message = $"OneNote said {status} to {method.Method} {(url.Length > 80 ? url[..80] : url)}: {detail}";
+        if (write && status >= 500)
+            throw new DeliveryUnknownException($"{message} (not sent again: it may have been applied)");
+        throw new OneNoteException(status, message);
     }
 }
