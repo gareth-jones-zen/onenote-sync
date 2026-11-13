@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onenote-sync"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pull a shared OneNote section's newest pages to files, and post your section of the week's page."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "m365-graph>=0.1.1",     # sign-in and Graph requests; not on PyPI, see README
+    "m365-graph>=0.2.0",     # sign-in and Graph requests; not on PyPI, see README
     "win-background>=0.1",   # the watcher task, notifications, the lock and the log; not on PyPI, see README
 ]
 

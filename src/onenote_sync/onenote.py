@@ -19,6 +19,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from m365_graph import resend_ok
+
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = ["Notes.ReadWrite.All"]
 DATED = re.compile(r"^(\d{4}-\d{2}-\d{2})\b")
@@ -70,12 +72,15 @@ class Notebook:
                 with urllib.request.urlopen(request, timeout=60) as response:
                     return response.read()
             except urllib.error.HTTPError as error:
-                if error.code not in (429, 500, 502, 503, 504) or attempt == 5:
+                # A PATCH or POST that may have landed isn't resent: it would insert the list twice, or
+                # create the week's page twice (13 Nov 2026). The next post sees what actually happened.
+                landed = "" if resend_ok(method, url, error) else " (may have been applied; not resent)"
+                if error.code not in (429, 500, 502, 503, 504) or attempt == 5 or landed:
                     detail = error.read().decode("utf-8", "replace")[:300]
-                    raise RuntimeError(f"OneNote said {error.code} to {method} {url[:80]}: {detail}") from error
+                    raise RuntimeError(f"OneNote said {error.code} to {method} {url[:80]}{landed}: {detail}") from error
                 time.sleep(int(error.headers.get("Retry-After") or 5 * attempt))
-            except (urllib.error.URLError, TimeoutError):
-                if attempt == 5:
+            except (urllib.error.URLError, TimeoutError) as error:
+                if attempt == 5 or not resend_ok(method, url, error):
                     raise
                 time.sleep(5 * attempt)
 
