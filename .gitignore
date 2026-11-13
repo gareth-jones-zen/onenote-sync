@@ -1,10 +1,10 @@
-__pycache__/
-*.egg-info/
-build/
-dist/
 bin/
 obj/
+bin-lib/
 out/
+publish/
+dist/
+stage/
+TestResults/
 *.user
 .vs/
-bin-lib/

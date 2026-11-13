@@ -181,6 +181,32 @@ public class ConfigTests
     }
 
     [Fact]
+    public void Settings_are_read_strictly_as_tomllib_reads_them()
+    {
+        using var temp = new TempDir();
+        var file = temp.Combine("config.toml");
+        File.WriteAllText(file, Settings.Replace("[pull]\n", "[pull]\nnewest = 3\nnewest = 4\n"));
+        Assert.StartsWith(file + ":", Assert.Throws<UsageException>(() => Config.Load(file)).Message);
+        File.WriteAllText(file, Settings + "[notebook]\nname = \"Again\"\n");
+        Assert.Throws<UsageException>(() => Config.Load(file));
+        File.WriteAllText(file, Settings, new UTF8Encoding(true));
+        Assert.EndsWith("Invalid statement (at line 1, column 1)", Assert.Throws<UsageException>(() => Config.Load(file)).Message);
+        File.WriteAllText(file, Settings.Replace("\n", "\r\n"));
+        Assert.Equal("Weekly", Config.Load(file).Notebook);
+    }
+
+    [Fact]
+    public void Version_is_the_builds()
+    {
+        var expected = System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Cli).Assembly)!.InformationalVersion;
+        Assert.Equal(expected, Cli.Version);
+        var output = new StringWriter();
+        Assert.Equal(0, Cli.Run(["--version"], new CliHost { Out = output }));
+        Assert.Equal(expected + Environment.NewLine, output.ToString());
+    }
+
+    [Fact]
     public void The_file_name_takes_only_date() =>
         Assert.Equal("{x} 2026-11-09.html", Pull.FileName("{{x}} {date}.html", "2026-11-09"));
 }
@@ -387,6 +413,19 @@ public class GraphNotebookTests
         var (timedOut, again, _) = Make((_, _) => throw new TaskCanceledException("timed out", new TimeoutException()));
         Assert.Throws<DeliveryUnknownException>(() => timedOut.Patch("p", [PatchChange.Replace("ul:1", "x")]));
         Assert.Single(again.Requests);
+    }
+
+    [Fact]
+    public void A_write_whose_connection_was_reset_isnt_sent_again_but_a_read_is()
+    {
+        static HttpResponseMessage Reset() => throw new HttpRequestException(HttpRequestError.ResponseEnded, "reset",
+            new IOException("reset", new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionReset)));
+        var (patch, patched, _) = Make((_, _) => Reset());
+        Assert.Throws<DeliveryUnknownException>(() => patch.Patch("p", [PatchChange.Replace("ul:1", "x")]));
+        Assert.Single(patched.Requests);
+        var (get, got, _) = Make((_, n) => n == 1 ? Reset() : Answer(HttpStatusCode.OK, [3]));
+        Assert.Equal([3], get.Content("p"));
+        Assert.Equal(2, got.Requests.Count);
     }
 
     [Fact]

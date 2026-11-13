@@ -2,7 +2,6 @@
   <Project Path="src/OneNoteSync/OneNoteSync.csproj" />
   <Project Path="src/OneNoteSync.Console/OneNoteSync.Console.csproj" />
   <Project Path="src/OneNoteSync.Background/OneNoteSync.Background.csproj" />
-  <Project Path="parity/OneNoteSync.Parity/OneNoteSync.Parity.csproj" />
 
   <Project Path="tests/OneNoteSync.Tests/OneNoteSync.Tests.csproj" />
 </Solution>

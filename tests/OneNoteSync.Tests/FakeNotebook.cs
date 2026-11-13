@@ -12,8 +12,7 @@ public sealed class FakePage(string id, string title, string date, string html)
     public string Html { get; set; } = html;
 }
 
-/// <summary>The Python tests' FakeNotebook, ported exactly (the parity harness runs both against the same pages):
-/// it applies each PATCH to its page's HTML, gives a new list the id "ul:new", and can drop a heading along with
+/// <summary>A fake notebook. It applies each PATCH to its page's HTML, gives a new list the id "ul:new", and can drop a heading along with
 /// the list it replaces, as OneNote did on a real page. It also records every PATCH body and created page.</summary>
 public sealed partial class FakeNotebook(List<FakePage> pages, bool dropsHeading = false) : IOneNote
 {

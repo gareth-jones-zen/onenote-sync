@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using PyCompat;
-using Tomlyn;
 using Tomlyn.Model;
 
 namespace OneNoteSync;
@@ -117,12 +116,16 @@ public sealed partial class Config
         TomlTable raw;
         try
         {
-            var text = new UTF8Encoding(false, true).GetString(File.ReadAllBytes(full)).Replace("\r\n", "\n");
-            raw = TomlSerializer.Deserialize(text, TomlContext.Default.TomlTable) ?? [];
+            // Read as tomllib reads it: strictly (a key or table given twice is refused), with universal newlines,
+            // and a byte order mark refused.
+            var text = PyStr.ReadText(full);
+            if (text.StartsWith('﻿'))
+                throw new UsageException($"{full}: Invalid statement (at line 1, column 1)");
+            raw = PyToml.Read(text, full);
         }
-        catch (Exception error) when (error is not IOException and not UnauthorizedAccessException)
+        catch (Exception error) when (error is not (IOException or UnauthorizedAccessException or UsageException))
         {
-            throw new UsageException($"{full}: {error.Message}");
+            throw new UsageException($"{full}: {error.Message.TrimEnd()}");
         }
         var folder = System.IO.Path.GetDirectoryName(full)!;
         var local = Local(env);
@@ -248,6 +251,3 @@ public sealed partial class Config
         return path;
     }
 }
-
-[Tomlyn.Serialization.TomlSerializable(typeof(TomlTable))]
-internal partial class TomlContext : Tomlyn.Serialization.TomlSerializerContext;
