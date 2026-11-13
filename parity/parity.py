@@ -8,6 +8,8 @@ never Graph. No page content is kept in this repo; everything recorded or derive
     python -I parity/parity.py compare                                          # differences, with numbers
 
 PY_SRC is a checkout of the Python version (src/ and tests/), e.g. a git worktree of the tag v0.1.0.
+Run the python and .NET steps from the same folder: one lock-key case is a relative path, resolved against
+the current folder.
 """
 
 from __future__ import annotations
