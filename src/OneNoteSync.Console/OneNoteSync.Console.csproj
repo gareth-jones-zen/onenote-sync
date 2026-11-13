@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>onenote-sync</AssemblyName>
+    <RootNamespace>OneNoteSync</RootNamespace>
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OneNoteSync\OneNoteSync.csproj" />
+  </ItemGroup>
+</Project>
