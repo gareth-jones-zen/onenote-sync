@@ -113,7 +113,10 @@ is never posted, so review notes can sit underneath.
    If the previous week's page is missing it stops rather than guess. **Check the title in the
    dry run when sprint numbering restarts** (a new year, say): it can't know that. **A page it
    creates goes at the bottom of the section**, because Graph adds new pages at the end and can't
-   move them, so drag it to the top in OneNote. The tool says so each time.
+   move them, **and it shows as untitled until someone opens it**, in OneNote and to Graph. So open
+   it and drag it to the top; the tool says so each time. It records the new page's id straight
+   away, so until the title shows, `post` and `pull` find it by that id (checking the date in its
+   HTML title) and never create the week's page twice.
 3. **It finds your heading and what's under it.** One list, or nothing, can be replaced. A section
    with more (Highlights / Challenges lists, a table) is left for you to edit in OneNote.
 4. **It stops if your section was changed by hand** since it last posted there (or holds anything,

@@ -295,6 +295,56 @@ public class PullAndPostMoreTests
     }
 }
 
+public class RecordedPageTests
+{
+    [Fact]
+    public void Post_finds_a_page_it_created_while_OneNote_still_lists_it_untitled()
+    {
+        using var temp = new TempDir();
+        var notebook = new FakeNotebook([Week("2026-11-02", 3)]);
+        temp.Post(notebook, dryRun: false);
+        Assert.Single(notebook.Created);
+        var id = notebook.Pages[^1].Id;
+        Assert.True(StateFile.Load(temp.Config.StateFile).ContainsKey(id));
+        Assert.Contains(temp.Lines, line => line.Contains("untitled until it's opened: open it and drag it to the top"));
+
+        notebook.Untitled.Add(id);
+        temp.Lines.Clear();
+        var again = temp.Post(notebook, dryRun: false);
+        Assert.Single(notebook.Created);
+        Assert.False(again.Created);
+        Assert.Equal("2026-11-09 – Sprint 3", again.Page);
+        Assert.Contains(temp.Lines, line => line.Contains("found it by the id recorded when it was created"));
+        Assert.Equal("'Architecture' on '2026-11-09 – Sprint 3' already reads as posted; nothing to do.", temp.Lines[^1]);
+    }
+
+    [Fact]
+    public void A_recorded_page_is_found_by_its_html_title_and_a_gone_one_is_skipped()
+    {
+        using var temp = new TempDir();
+        var page = Week("2026-11-09", 3);
+        File.WriteAllText(temp.Config.StateFile, "{\"gone\": {\"Architecture\": \"x\"}, \"2026-11-09\": {}}");
+        var notebook = new FakeNotebook([Week("2026-11-02", 3), page]);
+        notebook.Untitled.Add(page.Id);
+        temp.Post(notebook);
+        Assert.Empty(notebook.Created);
+        Assert.DoesNotContain(temp.Lines, line => line.StartsWith("No page for", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pull_takes_a_recorded_page_OneNote_lists_untitled()
+    {
+        using var temp = new TempDir();
+        var page = Week("2026-11-09", 3);
+        File.WriteAllText(temp.Config.StateFile, "{\"2026-11-09\": {}}");
+        var notebook = new FakeNotebook([Week("2026-11-02", 3), page]);
+        notebook.Untitled.Add(page.Id);
+        var result = Pull.Run(temp.Config, notebook, log: temp.Lines.Add);
+        Assert.Equal(2, result.Written.Count);
+        Assert.True(File.Exists(temp.Combine("out", "Weekly update 2026-11-09.html")));
+    }
+}
+
 public class GraphNotebookTests
 {
     private sealed class Handler(Func<HttpRequestMessage, int, HttpResponseMessage> answer) : HttpMessageHandler

@@ -14,7 +14,7 @@ public static class Pull
     {
         log ??= Console.WriteLine;
         var settings = config.Pull ?? throw new UsageException($"{config.Path} has no [pull] section.");
-        var pages = Py.From(notebook.DatedPages(), -settings.Newest);
+        var pages = Py.From(Recorded.DatedPages(notebook, config.StateFile), -settings.Newest);
         var written = new List<string>();
         var unchanged = 0;
         foreach (var item in pages)

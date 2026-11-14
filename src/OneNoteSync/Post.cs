@@ -72,16 +72,29 @@ public static partial class Post
         var week = WeekOf(markdownPath, date);
         var newText = Markdown.Plain(items);
 
-        var found = notebook.PageFor(week);
+        IReadOnlyList<PageInfo> listed = notebook.DatedPages();
+        var found = listed.FirstOrDefault(p => p.Date == week);
+        if (found is null)
+        {
+            // A page this tool made is listed untitled until it's opened, so look for it (and for earlier weeks it
+            // made, which the sprint number counts from) by the ids it recorded.
+            var unlisted = Recorded.Unlisted(notebook, config.StateFile, listed);
+            if (unlisted.Count > 0)
+                listed = Dates.Sort(listed.Concat(unlisted).Select(p => (p.Id, (string?)p.Title)));
+            found = unlisted.FirstOrDefault(p => p.Date == week);
+            if (found is not null)
+                log($"'{found.Title}' isn't listed under its title yet (a page this tool creates stays untitled until it's opened); "
+                    + "found it by the id recorded when it was created");
+        }
         var created = false;
         if (found is null)
         {
-            var earlier = notebook.DatedPages().Where(p => string.CompareOrdinal(p.Date, week) < 0).ToList();
+            var earlier = listed.Where(p => string.CompareOrdinal(p.Date, week) < 0).ToList();
             var (number, why) = Sprint.For(week, earlier, settings.SprintWeeks);
             var title = Sprint.Title(week, number);
             log($"No page for {week} yet: {(dryRun ? "would create" : "creating")} '{title}' ({why}), "
                 + $"with headings {string.Join(", ", settings.Headings)}. "
-                + "It will go at the bottom of the section, so drag it to the top in OneNote");
+                + "It will go at the bottom of the section, untitled until it's opened, so open it and drag it to the top in OneNote");
             if (dryRun)
             {
                 log($"\n{name}, as it would be posted:\n{newText}");
@@ -101,8 +114,16 @@ public static partial class Post
             }
             found = new PageInfo(id, title, week);
             created = true;
+            // Record it at once, before anything else can fail, so the next run finds it by id while OneNote still
+            // lists it untitled, rather than creating the week's page again.
+            var recorded = StateFile.Load(config.StateFile);
+            if (!recorded.ContainsKey(id))
+            {
+                recorded[id] = new OrderedDictionary<string, string>(StringComparer.Ordinal);
+                StateFile.Save(config.StateFile, recorded);
+            }
             log($"created '{title}'");
-            log("OneNote puts a page made this way at the bottom of the section: drag it to the top.");
+            log("OneNote puts a page made this way at the bottom of the section, untitled until it's opened: open it and drag it to the top.");
         }
 
         var state = StateFile.Load(config.StateFile);

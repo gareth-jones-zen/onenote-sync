@@ -36,10 +36,14 @@ public sealed partial class FakeNotebook(List<FakePage> pages, bool dropsHeading
     [GeneratedRegex(@"<p (?!id)")]
     private static partial Regex UnnamedParagraph();
 
-    public IReadOnlyList<PageInfo> DatedPages() =>
-        Pages.Select(p => new PageInfo(p.Id, p.Title, p.Date)).OrderBy(p => p.Date, StringComparer.Ordinal).ToList();
+    /// <summary>Pages listed without a title, as OneNote lists a page made through Graph until it's opened.</summary>
+    public HashSet<string> Untitled { get; } = [];
 
-    private FakePage Page(string id) => Pages.First(p => p.Id == id);
+    public IReadOnlyList<PageInfo> DatedPages() =>
+        Pages.Where(p => !Untitled.Contains(p.Id))
+            .Select(p => new PageInfo(p.Id, p.Title, p.Date)).OrderBy(p => p.Date, StringComparer.Ordinal).ToList();
+
+    private FakePage Page(string id) => Pages.FirstOrDefault(p => p.Id == id) ?? throw new OneNoteException(404, $"no page {id} (fake)");
 
     public byte[] Content(string pageId, bool ids = false, bool isNew = false)
     {
