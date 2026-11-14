@@ -111,7 +111,9 @@ is never posted, so review notes can sit underneath.
    creates it**: titled `yyyy-mm-dd – Sprint N`, with your `headings`. N comes from the pages before
    it: a sprint that has had `sprint_weeks` weekly pages is over, so the new page starts the next one.
    If the previous week's page is missing it stops rather than guess. **Check the title in the
-   dry run when sprint numbering restarts** (a new year, say): it can't know that.
+   dry run when sprint numbering restarts** (a new year, say): it can't know that. **A page it
+   creates goes at the bottom of the section**, because Graph adds new pages at the end and can't
+   move them, so drag it to the top in OneNote. The tool says so each time.
 3. **It finds your heading and what's under it.** One list, or nothing, can be replaced. A section
    with more (Highlights / Challenges lists, a table) is left for you to edit in OneNote.
 4. **It stops if your section was changed by hand** since it last posted there (or holds anything,

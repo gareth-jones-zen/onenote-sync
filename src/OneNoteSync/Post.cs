@@ -80,7 +80,8 @@ public static partial class Post
             var (number, why) = Sprint.For(week, earlier, settings.SprintWeeks);
             var title = Sprint.Title(week, number);
             log($"No page for {week} yet: {(dryRun ? "would create" : "creating")} '{title}' ({why}), "
-                + $"with headings {string.Join(", ", settings.Headings)}");
+                + $"with headings {string.Join(", ", settings.Headings)}. "
+                + "It will go at the bottom of the section, so drag it to the top in OneNote");
             if (dryRun)
             {
                 log($"\n{name}, as it would be posted:\n{newText}");
@@ -101,6 +102,7 @@ public static partial class Post
             found = new PageInfo(id, title, week);
             created = true;
             log($"created '{title}'");
+            log("OneNote puts a page made this way at the bottom of the section: drag it to the top.");
         }
 
         var state = StateFile.Load(config.StateFile);
