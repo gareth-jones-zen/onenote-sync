@@ -54,11 +54,25 @@ one already in progress (up to 10 minutes).
 **Exit codes:** 0 done; 1 refused or failed; 2 settings, arguments or sign-in; 3 another watcher is
 already running.
 
+## Sharing settings with other tools: `base`
+
+Several tools built on the shared library can keep their common settings in one file, named at the top of each
+tool's settings: `base = "base-config.toml"` (relative to the settings file). Then:
+
+- **the base's `[paths]` are variables** for this tool's paths, looked up before the environment: with
+  `EA_LOCAL = "%LOCALAPPDATA%/claude-ea"` there, `state_file = "%EA_LOCAL%/onenote-sync-state.json"` works here;
+- **its other settings that onenote-sync knows and this file doesn't set are used**, typically `login_hint`,
+  `tenant` and `msal_cache`;
+- **a table such as `[pull]` or `[post]` applies only if this file has that section too**, its own keys winning.
+
+The loader is background-tools-lib's `PyCompat.BaseSettings`.
+
 ## Settings
 
 `%APPDATA%\onenote-sync\config.toml` by default (`--config` or `ONENOTE_SYNC_CONFIG` for another).
 
 ```toml
+base = "base-config.toml"   # optional: settings shared with other tools
 login_hint = "you@example.com"
 
 [notebook]

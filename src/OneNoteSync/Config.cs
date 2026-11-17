@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using PyCompat;
+using Tomlyn;
 using Tomlyn.Model;
 
 namespace OneNoteSync;
@@ -57,6 +58,7 @@ public sealed partial class Config
     // with CRLF, as Python's text mode wrote it.
     public const string Template =
         "# onenote-sync settings. See the README.\n" +
+        "# base = \"base-config.toml\"   # settings shared with other tools\n" +
         "# login_hint = \"you@example.com\"\n" +
         "\n" +
         "[notebook]\n" +
@@ -71,6 +73,10 @@ public sealed partial class Config
         "# [post]\n" +
         "# section = \"My team\"\n" +
         "# headings = [\"Summary\", \"My team\"]\n";
+
+    /// <summary>Every top-level setting: what a base file may supply.</summary>
+    public static readonly string[] KnownKeys =
+        ["login_hint", "tenant", "msal_cache", "state_file", "log_file", "backups", "notebook", "pull", "post", "status"];
 
     public required string Path { get; init; }
     public required string Owner { get; init; }
@@ -126,7 +132,17 @@ public sealed partial class Config
             var text = PyStr.ReadText(full);
             if (text.StartsWith('﻿'))
                 throw new UsageException($"{full}: Invalid statement (at line 1, column 1)");
-            raw = PyToml.Read(text, full);
+            var read = BaseSettings.Read(text, full, env, KnownKeys);
+            raw = read.Raw;
+            env = read.Env;   // the base's [paths], then the environment
+        }
+        catch (TomlException error)
+        {
+            throw new UsageException($"{full}: {error.Message.TrimEnd()}");
+        }
+        catch (FormatException error)   // the base file: the message names it
+        {
+            throw new UsageException(error.Message.TrimEnd());
         }
         catch (Exception error) when (error is not (IOException or UnauthorizedAccessException or UsageException))
         {
