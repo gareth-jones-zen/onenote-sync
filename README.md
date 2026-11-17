@@ -38,6 +38,7 @@ onenote-sync config                 create the settings file (if missing) and sa
 onenote-sync sign-in                sign in to Microsoft (once; opens a browser)
 onenote-sync pages                  the dated pages in the section, newest last
 onenote-sync pull [--dry-run]       write the newest pages to files, where they've changed
+onenote-sync status [-n N]          how complete the newest pages are (default 2)
 onenote-sync post <file.md>         show what would be posted to your section (changes nothing)
 onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand)
 onenote-sync watch                  pull on a timer; what autostart runs
@@ -76,6 +77,9 @@ weekdays = true
 section = "My team"                 # your heading, on the page and in your markdown
 headings = ["Executive Summary", "Digital", "My team"]   # for a page this tool creates
 sprint_weeks = 2
+
+[status]                            # optional: what `status` reports on (default: [post] headings)
+sections = ["Digital", "My team"]
 ```
 
 Also:
@@ -104,6 +108,33 @@ own). It logs `repaired` when it does. A page with nothing out of place is still
 OneNote's dates: a page copied from a template keeps the template's `lastModifiedDateTime` (pages
 from November 2026 reported November 2024), and ordering by creation date put an untitled page
 first. Untitled pages and a `TEMPLATE` page are ignored.
+
+## Status
+
+`onenote-sync status` says how complete the newest pages are, newest first: which sections have text
+under them, which are empty and which have no heading at all. A page written by several people is never
+formally finished, so the newest page is reported as current and every older one as final.
+
+```
+onenote-sync status -n 3
+  2026-11-16 (current, still updating): 4 of 5 sections filled - Service empty
+  2026-11-09 (final): 5 of 5 sections filled
+  2026-11-02 (final): 4 of 5 sections filled - Digital missing
+```
+
+It reads the pages from OneNote, with pull's repair, so it's as current as the page.
+
+**What counts:**
+- **A section's heading** is a bold paragraph (any size) whose text starts with the section's name, so
+  "Digital Tribe Update:" counts as Digital.
+- **Its text** runs to the next section heading, or to one of `[post] headings` that isn't reported
+  ("Executive Summary").
+- **Bold sub-headings** ("Highlights:") are part of the section they're in, but aren't content: a section
+  with only "Highlights:" under it is empty.
+- **A section named twice on a page** (a summary at the top, the detail further down) counts as filled if
+  either has text.
+
+`[status] sections` lists the sections to report; without it, every `[post] heading` is reported.
 
 ## Post
 

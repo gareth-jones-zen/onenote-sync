@@ -43,6 +43,9 @@ public sealed record PostSettings(string Section, IReadOnlyList<string> Headings
 ///     headings = ["Executive Summary", "Digital", "Fulfilment", "Assurance", "Architecture"]
 ///     sprint_weeks = 2                        # for a new page's "Sprint N"
 ///
+///     [status]                                # optional: what `status` reports on
+///     sections = ["Digital", "Fulfilment", "Assurance", "Architecture"]   # default: [post] headings
+///
 /// Pages are found by the date their title starts with, "yyyy-mm-dd – Sprint N", one per week.
 /// Paths may use ~ and %VARIABLES% (and $VAR, as Python's expandvars); relative paths are relative to the
 /// settings file.</summary>
@@ -75,6 +78,8 @@ public sealed partial class Config
     public required string Section { get; init; }
     public PullSettings? Pull { get; init; }
     public PostSettings? Post { get; init; }
+    /// <summary>[status] sections: the headings `status` reports on; empty means [post] headings.</summary>
+    public IReadOnlyList<string> StatusSections { get; init; } = [];
     public string? LoginHint { get; init; }
     public string Tenant { get; init; } = "organizations";
     public string? MsalCache { get; init; }
@@ -163,6 +168,14 @@ public sealed partial class Config
             post = new PostSettings(section, headings, Int(qt, "sprint_weeks", 2, full));
         }
 
+        IReadOnlyList<string> statusSections = [];
+        if (raw.TryGetValue("status", out var st) && st is TomlTable stt && stt.TryGetValue("sections", out var ss))
+        {
+            if (ss is not TomlArray sectionArray || sectionArray.Count == 0)
+                throw new UsageException($"[status] sections in {full} should be a list of headings, such as [\"Digital\", \"Architecture\"].");
+            statusSections = sectionArray.Select(Str).ToList();
+        }
+
         return new Config
         {
             Path = full,
@@ -177,6 +190,7 @@ public sealed partial class Config
             Backups = Truthy(raw, "backups") ? PathSetting(Str(raw["backups"]), folder, env) : PyPath.Pure(System.IO.Path.Combine(local, "backups")),
             Pull = pull,
             Post = post,
+            StatusSections = statusSections,
         };
     }
 

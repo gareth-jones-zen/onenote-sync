@@ -12,7 +12,7 @@ public static class Cli
     public const string Prog = "onenote-sync";
 
     private const string Usage =
-        "usage: onenote-sync [-h] [--version] [--config CONFIG] {config,sign-in,pages,pull,post,watch,autostart} ...";
+        "usage: onenote-sync [-h] [--version] [--config CONFIG] {config,sign-in,pages,pull,status,post,watch,autostart} ...";
 
     // Explicit "\n" throughout (a raw literal would take the .cs file's line endings).
     public const string Help =
@@ -22,6 +22,7 @@ public static class Cli
         "    onenote-sync sign-in                sign in to Microsoft (once; opens a browser)\n" +
         "    onenote-sync pages                  the dated pages in the section, newest last\n" +
         "    onenote-sync pull [--dry-run]       write the newest pages to files, where they've changed\n" +
+        "    onenote-sync status [-n N]          how complete the newest pages are (default 2)\n" +
         "    onenote-sync post <file.md>         show what would be posted to your section (changes nothing)\n" +
         "    onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand)\n" +
         "    onenote-sync watch                  pull on a timer; what autostart runs\n" +
@@ -32,7 +33,7 @@ public static class Cli
         "  --version        show program's version number and exit\n" +
         "  --config CONFIG  settings file (default %APPDATA%\\onenote-sync\\config.toml)\n";
 
-    private static readonly string[] Commands = ["config", "sign-in", "pages", "pull", "post", "watch", "autostart"];
+    private static readonly string[] Commands = ["config", "sign-in", "pages", "pull", "status", "post", "watch", "autostart"];
 
     public static string Version =>
         typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
@@ -42,6 +43,7 @@ public static class Cli
         public string? Config;
         public string Command = "";
         public bool DryRun, Yes, Force;
+        public int Newest = 2;
         public string? File, Date, Action;
     }
 
@@ -113,6 +115,16 @@ public static class Cli
             {
                 foreach (var item in notebook.DatedPages())
                     host.Out.WriteLine(item.Title);
+                return 0;
+            }
+            if (options.Command == "status")
+            {
+                var total = OneNoteSync.Status.Sections(config).Count;
+                var weeks = OneNoteSync.Status.Run(config, notebook, options.Newest);
+                if (weeks.Count == 0)
+                    host.Out.WriteLine($"No dated pages in {config.Section}.");
+                foreach (var week in weeks)
+                    host.Out.WriteLine(week.Line(total));
                 return 0;
             }
             using (host.RunLock($"onenote-sync-run-{Locks.Key(config.Path)}", 600)
@@ -189,6 +201,10 @@ public static class Cli
                 case (_, "-h" or "--help"):
                     host.Out.Write(Help);
                     return null;
+                case ("status", "-n"):
+                    if (++i >= argv.Count || !int.TryParse(argv[i], out options.Newest) || options.Newest < 1)
+                        throw new ArgumentsException("argument -n: expected a number of pages, 1 or more");
+                    break;
                 case ("pull", "--dry-run"):
                     options.DryRun = true;
                     break;
