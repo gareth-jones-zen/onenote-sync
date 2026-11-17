@@ -93,6 +93,13 @@ file already there**, so a watcher polling every 15 minutes writes nothing on a 
 are byte for byte what Power Automate's OneNote connector saves, so a flow can be swapped for this
 without changing anything downstream.
 
+**One repair (1.0.3): a heading OneNote's export moved to the end goes back where the page shows it.** When
+someone pastes content under one of the `[post] headings`, the page still shows it in place, but OneNote's HTML can
+leave that heading outside the block holding the others, after everything else, so the pasted content reads as the
+previous section's. Pull moves such a heading back, in the `headings` order, before the next heading that's there,
+and gives it the "bare" list just above that heading (a list straight after another list, with no heading of its
+own). It logs `repaired` when it does. A page with nothing out of place is still written byte for byte as served.
+
 **Pages are found by the date their title starts with** (`2026-11-09 – Sprint 3`), never by
 OneNote's dates: a page copied from a template keeps the template's `lastModifiedDateTime` (pages
 from November 2026 reported November 2024), and ordering by creation date put an untitled page

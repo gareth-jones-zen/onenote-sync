@@ -6,8 +6,9 @@ public sealed record PullResult(IReadOnlyList<string> Written, int Unchanged);
 
 /// <summary>Pull writes each of the newest pages' HTML (as OneNote serves it, without element ids) to [pull] file,
 /// only when it differs from what's there, so a watcher polling every 15 minutes writes nothing on a quiet day. The
-/// bytes are never decoded: they're exactly what Power Automate's OneNote connector saved (checked 10 Nov 2026),
-/// so anything converting them carries on unchanged.</summary>
+/// bytes are exactly what Power Automate's OneNote connector saved (checked 10 Nov 2026), so anything converting
+/// them carries on unchanged, with one exception (1.0.3): a [post] heading OneNote's export left at the end of the
+/// page goes back where the page shows it (PageRepair). A page with nothing out of place is written as served.</summary>
 public static class Pull
 {
     public static PullResult Run(Config config, IOneNote notebook, bool dryRun = false, Action<string>? log = null)
@@ -17,10 +18,13 @@ public static class Pull
         var pages = Py.From(Recorded.DatedPages(notebook, config.StateFile), -settings.Newest);
         var written = new List<string>();
         var unchanged = 0;
+        var headings = config.Post?.Headings ?? [];
         foreach (var item in pages)
         {
             var target = PyPath.Pure(Path.Combine(settings.Folder, FileName(settings.File, item.Date)));
-            var html = notebook.Content(item.Id);
+            var (html, moved) = PageRepair.Repair(notebook.Content(item.Id), headings);
+            if (moved.Count > 0)
+                log($"repaired  {Path.GetFileName(target)}: {string.Join(", ", moved)} put back in place (OneNote's export had moved it to the end)");
             if (File.Exists(target) && File.ReadAllBytes(target).AsSpan().SequenceEqual(html))
             {
                 unchanged++;
