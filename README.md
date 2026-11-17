@@ -24,8 +24,9 @@ Windows (x64) only; nothing else is needed.
 3. Run the commands below from that folder, or add it to your `PATH`.
 
 It holds two programs: `onenote-sync.exe`, for a console, and `onenote-sync-background.exe`, the
-same program with no window, which the logon task runs. To upgrade, run `onenote-sync autostart off`,
-unzip the newer release over the same folder, then `onenote-sync autostart on`.
+same program with no window, which the logon task runs.
+
+**To upgrade while the watcher runs:** rename `onenote-sync.exe` and `onenote-sync-background.exe` to `.old` (Windows lets you rename a program that's running, but not overwrite it), unzip the new release into the same folder, then run `onenote-sync autostart restart`. That stops the watcher, waits for it to exit and starts the new version, keeping the task as it was. Delete the `.old` files afterwards. If the old watcher hasn't exited after 30 seconds, nothing is started and it carries on as it was.
 
 **It needs Notes.ReadWrite.All** on Microsoft's "Graph Command Line Tools" app for a notebook in
 someone else's OneDrive (Notes.ReadWrite reaches only your own). Many organisations need an admin

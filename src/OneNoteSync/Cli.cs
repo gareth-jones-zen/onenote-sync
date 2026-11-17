@@ -26,7 +26,7 @@ public static class Cli
         "    onenote-sync post <file.md>         show what would be posted to your section (changes nothing)\n" +
         "    onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand)\n" +
         "    onenote-sync watch                  pull on a timer; what autostart runs\n" +
-        "    onenote-sync autostart on           the watcher at every logon, and now (off, status)\n\n" +
+        "    onenote-sync autostart on           the watcher at every logon, and now (off, restart, status)\n\n" +
         "        --date yyyy-mm-dd               post: the week's Monday, if the file name has no date\n\n" +
         "options:\n" +
         "  -h, --help       show this help message and exit\n" +
@@ -240,8 +240,8 @@ public static class Cli
             case "autostart":
                 if (positional.Count == 0)
                     throw new ArgumentsException("the following arguments are required: action");
-                if (positional[0] is not ("on" or "off" or "status"))
-                    throw new ArgumentsException($"argument action: invalid choice: '{positional[0]}' (choose from 'on', 'off', 'status')");
+                if (positional[0] is not ("on" or "off" or "restart" or "status"))
+                    throw new ArgumentsException($"argument action: invalid choice: '{positional[0]}' (choose from 'on', 'off', 'restart', 'status')");
                 options.Action = positional[0];
                 positional.RemoveAt(0);
                 break;
@@ -276,6 +276,20 @@ public static class Cli
         }
         else if (action == "off")
             host.Out.WriteLine(task.Disable() ? "Autostart is off." : "Autostart was already off.");
+        else if (action == "restart")
+        {
+            try
+            {
+                host.Out.WriteLine(task.Restart()
+                    ? $"Restarted '{OneNoteSync.AutoStart.TaskName}': the watcher is running the installed version."
+                    : "Autostart is off, so there's nothing to restart. `onenote-sync autostart on` turns it on.");
+            }
+            catch (InvalidOperationException error)
+            {
+                host.Err.WriteLine(error.Message);
+                return 1;
+            }
+        }
         else
         {
             var info = task.Status();
