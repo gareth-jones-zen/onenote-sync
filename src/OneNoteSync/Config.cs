@@ -13,7 +13,27 @@ public class UsageException(string message) : Exception(message);
 /// <summary>No settings file (Python's FileNotFoundError from load): exit 2.</summary>
 public sealed class NoSettingsException(string message) : UsageException(message);
 
-public sealed record PullSettings(string Folder, string File, int Newest, int EveryMinutes, string HoursFrom, string HoursTo, bool Weekdays);
+public sealed record PullSettings(string Folder, string File, int Newest, int EveryMinutes, string HoursFrom, string HoursTo, bool Weekdays)
+{
+    /// <summary>When the watcher pulls: [schedule] (background-tools-lib's shared scheduling settings, 1.4.0), a
+    /// watcher's every_minutes being how often it pulls. Null: from EveryMinutes, HoursFrom-HoursTo and Weekdays, which
+    /// until 1.4.0 were [pull] every_minutes, hours and weekdays (still read: the old form).</summary>
+    public WinBackground.ScheduleSettings? Schedule { get; init; }
+
+    /// <summary>True when the schedule came from the old [pull] keys (the watcher logs it once at start).</summary>
+    public bool ScheduleFromOldKeys { get; init; }
+
+    private static readonly HashSet<DayOfWeek> MonToFri =
+        [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday];
+
+    /// <summary>The schedule in force: [schedule]'s, or one made from the fields.</summary>
+    public WinBackground.ScheduleSettings Effective => Schedule ?? new WinBackground.ScheduleSettings
+    {
+        EveryMinutes = EveryMinutes,
+        Hours = WinBackground.ScheduleSettings.ParseHours($"{HoursFrom}-{HoursTo}"),
+        Days = Weekdays ? MonToFri : null,
+    };
+}
 
 public sealed record PostSettings(string Section, IReadOnlyList<string> Headings, int SprintWeeks);
 
@@ -35,9 +55,11 @@ public sealed record PostSettings(string Section, IReadOnlyList<string> Headings
 ///     folder = "~/OneDrive/Weekly updates"
 ///     file = "Weekly update {date}.html"      # {date} is the yyyy-mm-dd the page's title starts with
 ///     newest = 2                              # how many of the newest pages
-///     every_minutes = 15                      # watch mode
-///     hours = "07:00-19:00"                   # watch mode: only between these times...
-///     weekdays = true                         # ...and only Monday to Friday
+///
+///     [schedule]                              # watch mode (1.4.0; [pull] every_minutes, hours, weekdays until then)
+///     every_minutes = 15
+///     hours = "07:00-19:00"                   # only between these times...
+///     days = "Mon-Fri"                        # ...and only on these days
 ///
 ///     [post]                                  # optional: your section of the week's page
 ///     section = "Architecture"                # the heading on the page, and in your markdown file
@@ -76,7 +98,38 @@ public sealed partial class Config
 
     /// <summary>Every top-level setting: what a base file may supply.</summary>
     public static readonly string[] KnownKeys =
-        ["login_hint", "tenant", "msal_cache", "state_file", "log_file", "backups", "notebook", "pull", "post", "status"];
+        ["login_hint", "tenant", "msal_cache", "state_file", "log_file", "backups", "notebook", "pull", "post", "status", "schedule"];
+
+    /// <summary>The watcher's defaults, as before [schedule] (1.4.0): every 15 minutes, 07:00-19:00, Mon-Fri.</summary>
+    public static readonly WinBackground.ScheduleSettings DefaultSchedule = new()
+    {
+        EveryMinutes = 15,
+        Hours = (new TimeSpan(7, 0, 0), new TimeSpan(19, 0, 0)),
+        Days = new HashSet<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday },
+    };
+
+    /// <summary>[schedule] (1.4.0), or null when the file has none (the old [pull] keys, or the defaults, apply).</summary>
+    private static WinBackground.ScheduleSettings? ReadSchedule(TomlTable raw, string full)
+    {
+        if (!raw.TryGetValue("schedule", out var value))
+            return null;
+        if (value is not TomlTable table)
+            throw new UsageException($"schedule in {full} should be a [schedule] table.");
+        WinBackground.ScheduleSettings schedule;
+        try
+        {
+            schedule = WinBackground.ScheduleSettings.Parse(table, DefaultSchedule, WinBackground.TaskKind.Watcher, $"[schedule] in {full}");
+        }
+        catch (FormatException error)
+        {
+            throw new UsageException(error.Message);
+        }
+        if (schedule.EveryMinutes is not > 0)
+            throw new UsageException($"[schedule] in {full}: every_minutes (how often the watcher pulls) should be at least 1.");
+        return schedule;
+    }
+
+    private static string Clock(TimeSpan t) => t.TotalHours >= 24 ? "24:00" : $"{(int)t.TotalHours:00}:{t.Minutes:00}";
 
     public required string Path { get; init; }
     public required string Owner { get; init; }
@@ -155,6 +208,7 @@ public sealed partial class Config
         if (missing.Count > 0)
             throw new UsageException($"[notebook] in {full} needs {string.Join(", ", missing)}.");
 
+        var schedule = ReadSchedule(raw, full);
         PullSettings? pull = null;
         if (raw.TryGetValue("pull", out var p) && p is TomlTable pt && pt.Count > 0)
         {
@@ -163,12 +217,28 @@ public sealed partial class Config
             var file = pt.TryGetValue("file", out var f) ? Str(f) : "Weekly update {date}.html";
             if (!file.Contains("{date}", StringComparison.Ordinal))
                 throw new UsageException($"[pull] file in {full} must contain {{date}}, or every page would be written to one file.");
-            var hours = pt.TryGetValue("hours", out var h) ? Str(h) : "07:00-19:00";
-            if (!HoursPattern().IsMatch(hours))
-                throw new UsageException($"[pull] hours in {full} should look like \"07:00-19:00\".");
-            var parts = hours.Split('-');
-            pull = new PullSettings(PathSetting(Str(pt["folder"]), folder, env), file, Int(pt, "newest", 2, full),
-                Int(pt, "every_minutes", 15, full), parts[0], parts[1], !pt.TryGetValue("weekdays", out var w) || Bool(w));
+            var old = new[] { "every_minutes", "hours", "weekdays" }.Where(pt.ContainsKey).ToList();
+            if (schedule is not null)
+            {
+                if (old.Count > 0)
+                    throw new UsageException($"{full} sets {string.Join(", ", old)} in [pull] and has a [schedule]: keep them in "
+                                             + "[schedule] only (the [pull] keys are the old form).");
+                var (from, to) = schedule.Hours is var (a, b) ? (Clock(a), Clock(b)) : ("00:00", "24:00");
+                pull = new PullSettings(PathSetting(Str(pt["folder"]), folder, env), file, Int(pt, "newest", 2, full),
+                    schedule.EveryMinutes ?? 15, from, to,
+                    schedule.Days is { Count: 5 } d && !d.Contains(DayOfWeek.Saturday) && !d.Contains(DayOfWeek.Sunday))
+                { Schedule = schedule };
+            }
+            else
+            {
+                var hours = pt.TryGetValue("hours", out var h) ? Str(h) : "07:00-19:00";
+                if (!HoursPattern().IsMatch(hours))
+                    throw new UsageException($"[pull] hours in {full} should look like \"07:00-19:00\".");
+                var parts = hours.Split('-');
+                pull = new PullSettings(PathSetting(Str(pt["folder"]), folder, env), file, Int(pt, "newest", 2, full),
+                    Int(pt, "every_minutes", 15, full), parts[0], parts[1], !pt.TryGetValue("weekdays", out var w) || Bool(w))
+                { ScheduleFromOldKeys = old.Count > 0 };
+            }
         }
 
         PostSettings? post = null;

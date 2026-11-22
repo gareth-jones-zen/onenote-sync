@@ -84,9 +84,11 @@ section = "Weekly Updates"
 folder = "~/OneDrive/Weekly updates"
 file = "Weekly update {date}.html"  # {date}: the yyyy-mm-dd the page title starts with
 newest = 2
-every_minutes = 15                  # watch mode, between these hours, Monday to Friday
+
+[schedule]                          # when `watch` pulls (the shared [schedule] settings: see below)
+every_minutes = 15
 hours = "07:00-19:00"
-weekdays = true
+days = "Mon-Fri"
 
 [post]
 section = "My team"                 # your heading, on the page and in your markdown
@@ -199,7 +201,13 @@ onenote-sync autostart off
 onenote-sync watch              # the same loop, in a console
 ```
 
-`watch` pulls every `every_minutes`, within `hours`, and on weekdays only unless `weekdays = false`.
+`watch` pulls every `every_minutes`, within `hours`, on `days`: `[schedule]` (1.4.0), the shared scheduling settings from
+background-tools-lib (its README, "[schedule]: the shared scheduling settings"), the same keys in every tool. It's a
+watcher, so `daily_at` and `after_unlock_minutes` don't apply. **Defaults:** every 15 minutes, 07:00-19:00, Mon-Fri. The
+settings are re-read at each pull, so a change takes effect from the next one; `autostart status` says if the
+registered task no longer matches. **Until 1.4.0** these were `[pull]` `every_minutes`, `hours` and `weekdays`
+(`weekdays = false` is `days = "Mon-Sun"`): still read, with a log line at start saying they're the old form; a file
+with both is refused.
 
 - **One watcher per settings file.** A second one exits at once, with code 3.
 - **It never opens a browser.** A lapsed sign-in is logged and notified at once, and it keeps trying

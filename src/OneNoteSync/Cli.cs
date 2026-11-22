@@ -271,7 +271,8 @@ public static class Cli
                 host.Err.WriteLine(error.Message);
                 return 1;
             }
-            var line = task.Enable(exe, AutoStart.Arguments(config), Path.GetDirectoryName(config.Path));
+            var line = task.Enable(exe, AutoStart.Arguments(config), Path.GetDirectoryName(config.Path),
+                (config.Pull?.Effective ?? Config.DefaultSchedule).ToTaskSchedule(WinBackground.TaskKind.Watcher));
             host.Out.WriteLine($"Autostart is on: '{AutoStart.TaskName}' runs at every logon, and has started now.\n  {line}");
         }
         else if (action == "off")
@@ -300,6 +301,9 @@ public static class Cli
                 host.Out.WriteLine($"Autostart is on ('{AutoStart.TaskName}').");
                 foreach (var name in new[] { "state", "last_run", "last_result", "command" })
                     host.Out.WriteLine($"  {name.Replace('_', ' '),-12} {info.GetValueOrDefault(name, "")}");
+                var fingerprint = (config.Pull?.Effective ?? Config.DefaultSchedule).Fingerprint(WinBackground.TaskKind.Watcher);
+                if (WinBackground.ScheduleDrift.Advice(WinBackground.ScheduleDrift.Check(info, fingerprint), "onenote-sync") is { } advice)
+                    host.Out.WriteLine("  " + advice);
             }
         }
         return 0;

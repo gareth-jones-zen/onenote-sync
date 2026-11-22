@@ -33,13 +33,8 @@ public static class Watcher
 {
     public const int AlreadyRunning = 3;
 
-    public static bool Due(PullSettings pull, DateTime now)
-    {
-        if (pull.Weekdays && now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-            return false;
-        var time = now.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
-        return string.CompareOrdinal(pull.HoursFrom, time) <= 0 && string.CompareOrdinal(time, pull.HoursTo) < 0;
-    }
+    /// <summary>Whether a pull is due now: inside the schedule's hours and days (the shared IsActive).</summary>
+    public static bool Due(PullSettings pull, DateTime now) => pull.Effective.IsActive(now);
 
     public static string LockName(Config config) => $"onenote-sync-watch-{Locks.Key(config.Path)}";
 
@@ -56,6 +51,8 @@ public static class Watcher
         var pull = config.Pull!;
         log($"watching '{config.Notebook}' / '{config.Section}' every {pull.EveryMinutes} min, "
             + $"{pull.HoursFrom}-{pull.HoursTo}{(pull.Weekdays ? " Mon-Fri" : "")}");
+        if (pull.ScheduleFromOldKeys)
+            log("settings: [pull] every_minutes, hours and weekdays are the old form; move them to [schedule] (README, Settings)");
         double nextPull = 0, beat = host.Time();
         string? failing = null;
         var streak = 0;   // failures in a row
