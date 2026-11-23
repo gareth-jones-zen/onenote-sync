@@ -86,6 +86,14 @@ public static partial class Post
                 log($"'{found.Title}' isn't listed under its title yet (a page this tool creates stays untitled until it's opened); "
                     + "found it by the id recorded when it was created");
         }
+        var unconfirmed = Unconfirmed.Load(config.StateFile);
+        if (found is not null && unconfirmed.Remove(week) && !dryRun)
+            Unconfirmed.Save(config.StateFile, unconfirmed);
+        if (found is null && unconfirmed.TryGetValue(week, out var tried) && !force)
+            throw new RefusedException(
+                $"Creating the page for {week} on {tried} got no answer, so it may be there: at the bottom of the section, untitled "
+                + "(a page made this way stays untitled until it's opened). Look in OneNote: if it's there, open it (that gives it its "
+                + "title) and run this again; if it isn't, run again with --force to create it.");
         var created = false;
         if (found is null)
         {
@@ -107,11 +115,18 @@ public static partial class Post
             }
             catch (DeliveryUnknownException error)
             {
+                // Recorded, so the next post for this week stops rather than create the page a second time: a page
+                // made this way is listed untitled until it's opened, so the next run couldn't find it by its title.
+                unconfirmed[week] = clock().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+                Unconfirmed.Save(config.StateFile, unconfirmed);
                 throw new PostFailedException(
                     $"Creating '{title}' got no answer, so it wasn't sent again: a second try could make the page twice. "
-                    + $"Look in the section in OneNote: if the page is there, run this again and it will be found; if not, "
-                    + $"run it again to create it. ({error.Message})");
+                    + "Look at the bottom of the section in OneNote: if the page is there (untitled), open it, then run this again "
+                    + "and it will be found; if it isn't, run again with --force to create it. Until then, post stops for this week. "
+                    + $"({error.Message})");
             }
+            if (unconfirmed.Remove(week))
+                Unconfirmed.Save(config.StateFile, unconfirmed);
             found = new PageInfo(id, title, week);
             created = true;
             // Record it at once, before anything else can fail, so the next run finds it by id while OneNote still

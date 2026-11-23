@@ -24,7 +24,7 @@ public static class Cli
         "    onenote-sync pull [--dry-run]       write the newest pages to files, where they've changed\n" +
         "    onenote-sync status [-n N]          how complete the newest pages are (default 2)\n" +
         "    onenote-sync post <file.md>         show what would be posted to your section (changes nothing)\n" +
-        "    onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand)\n" +
+        "    onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand, or makes a page whose create went unanswered)\n" +
         "    onenote-sync watch                  pull on a timer; what autostart runs\n" +
         "    onenote-sync autostart on           the watcher at every logon, and now (off, restart, status)\n\n" +
         "        --date yyyy-mm-dd               post: the week's Monday, if the file name has no date\n\n" +

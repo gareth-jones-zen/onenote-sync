@@ -332,6 +332,49 @@ public class RecordedPageTests
     }
 
     [Fact]
+    public void A_create_with_no_answer_isnt_sent_again_and_later_posts_stop_until_its_found()
+    {
+        using var temp = new TempDir();
+        var notebook = new FakeNotebook([Week("2026-11-02", 3)]) { LoseNextCreateReply = true };
+        var failed = Assert.Throws<PostFailedException>(() => temp.Post(notebook, dryRun: false));
+        Assert.Contains("wasn't sent again", failed.Message);
+        Assert.Single(notebook.Created);
+        Assert.True(File.Exists(Unconfirmed.PathFor(temp.Config.StateFile)));
+        Assert.True(Unconfirmed.Load(temp.Config.StateFile).ContainsKey("2026-11-09"));
+
+        // the page landed, untitled, and its id never came back: the next post (or preview) stops rather than make it twice
+        Assert.Contains("may be there", Assert.Throws<RefusedException>(() => temp.Post(notebook, dryRun: false)).Message);
+        Assert.Throws<RefusedException>(() => temp.Post(notebook));
+        Assert.Single(notebook.Created);
+
+        // opened in OneNote, it has its title: found, posted to, and the record cleared
+        notebook.Untitled.Clear();
+        var result = temp.Post(notebook, dryRun: false);
+        Assert.True(result.Posted);
+        Assert.False(result.Created);
+        Assert.Single(notebook.Created);
+        Assert.False(File.Exists(Unconfirmed.PathFor(temp.Config.StateFile)));
+    }
+
+    [Fact]
+    public void A_create_with_no_answer_that_didnt_land_is_made_with_force()
+    {
+        using var temp = new TempDir();
+        var notebook = new FakeNotebook([Week("2026-11-02", 3)]) { FailNextCreate = true };
+        Assert.Throws<PostFailedException>(() => temp.Post(notebook, dryRun: false));
+        Assert.Single(notebook.Pages);
+        Assert.Throws<RefusedException>(() => temp.Post(notebook, dryRun: false));
+        Assert.Single(notebook.Created);
+
+        var result = temp.Post(notebook, dryRun: false, force: true);
+        Assert.True(result.Created);
+        Assert.True(result.Posted);
+        Assert.Equal(2, notebook.Created.Count);
+        Assert.Equal(2, notebook.Pages.Count);
+        Assert.False(File.Exists(Unconfirmed.PathFor(temp.Config.StateFile)));
+    }
+
+    [Fact]
     public void Pull_takes_a_recorded_page_OneNote_lists_untitled()
     {
         using var temp = new TempDir();
@@ -463,6 +506,40 @@ public class GraphNotebookTests
         var (timedOut, again, _) = Make((_, _) => throw new TaskCanceledException("timed out", new TimeoutException()));
         Assert.Throws<DeliveryUnknownException>(() => timedOut.Patch("p", [PatchChange.Replace("ul:1", "x")]));
         Assert.Single(again.Requests);
+    }
+
+    [Fact]
+    public void A_create_that_timed_out_isnt_sent_again()
+    {
+        var handler = new Handler((_, _) => throw new TaskCanceledException("timed out", new TimeoutException()));
+        var notebook = new GraphNotebook(
+            url => Items(url.Contains("/sections?") ? """[{"id":"s1","displayName":"S"}]""" : """[{"id":"n1","displayName":"n"}]"""),
+            Client(handler), "me", "N", "s", null);
+        Assert.Contains("may have been applied", Assert.Throws<DeliveryUnknownException>(() => notebook.Create("<html></html>")).Message);
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public void A_patch_that_got_a_5xx_is_sent_once_and_says_what_onenote_said(HttpStatusCode status)
+    {
+        var (notebook, handler, waits) = Make((_, _) => Answer(status, Encoding.UTF8.GetBytes("gateway")));
+        Assert.Equal($"OneNote said {(int)status} to PATCH /users/a%40b.c/onenote/pages/p/content: gateway (not sent again: it may have been applied)",
+            Assert.Throws<DeliveryUnknownException>(() => notebook.Patch("p", [PatchChange.Replace("ul:1", "x")])).Message);
+        Assert.Single(handler.Requests);
+        Assert.Empty(waits);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.GatewayTimeout)]
+    public void A_get_that_got_a_5xx_is_retried(HttpStatusCode status)
+    {
+        var (notebook, handler, _) = Make((_, n) => n == 1 ? Answer(status) : Answer(HttpStatusCode.OK, [4]));
+        Assert.Equal([4], notebook.Content("p"));
+        Assert.Equal(2, handler.Requests.Count);
     }
 
     [Fact]

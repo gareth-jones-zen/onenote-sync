@@ -78,3 +78,57 @@ public static class StateFile
         File.Move(temp, path, overwrite: true);
     }
 }
+
+/// <summary>Weeks whose page post tried to create but couldn't confirm (no answer, or a 5xx): {week: when}, in a
+/// file beside the state file ("state.json" → "state.unconfirmed-pages.json"). A page made through Graph is listed
+/// untitled until someone opens it, and its id never came back, so a later post couldn't find it; while its week is
+/// here, post stops rather than create the page a second time. Cleared when the week's page is found or created.</summary>
+public static class Unconfirmed
+{
+    public static string PathFor(string stateFile) => Path.ChangeExtension(stateFile, ".unconfirmed-pages.json");
+
+    public static SortedDictionary<string, string> Load(string stateFile)
+    {
+        var path = PathFor(stateFile);
+        var weeks = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return weeks;
+        }
+        try
+        {
+            if (JsonNode.Parse(text) is not JsonObject json)
+                throw new UsageException($"{path} isn't a JSON object of weeks.");
+            foreach (var (week, when) in json)
+                weeks[week] = when is JsonValue value && value.TryGetValue<string>(out var s) ? s : "";
+        }
+        catch (JsonException error)
+        {
+            throw new UsageException($"{path}: {error.Message}");
+        }
+        return weeks;
+    }
+
+    /// <summary>Write the weeks, or remove the file when there are none.</summary>
+    public static void Save(string stateFile, SortedDictionary<string, string> weeks)
+    {
+        var path = PathFor(stateFile);
+        if (weeks.Count == 0)
+        {
+            File.Delete(path);
+            return;
+        }
+        var json = new JsonObject();
+        foreach (var (week, when) in weeks)
+            json[week] = when;
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n", new UTF8Encoding(false));
+        File.Move(temp, path, overwrite: true);
+    }
+}

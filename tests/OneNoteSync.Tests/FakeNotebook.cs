@@ -24,6 +24,13 @@ public sealed partial class FakeNotebook(List<FakePage> pages, bool dropsHeading
     /// <summary>Thrown by the next PATCH after it's applied, as a reply lost on the way back would be.</summary>
     public bool LoseNextPatchReply { get; set; }
 
+    /// <summary>The next create makes the page (listed untitled, as OneNote lists one made through Graph), then its
+    /// reply is lost.</summary>
+    public bool LoseNextCreateReply { get; set; }
+
+    /// <summary>The next create gets no answer and makes nothing.</summary>
+    public bool FailNextCreate { get; set; }
+
     [GeneratedRegex(@" id=""[^""]+""")]
     private static partial Regex Ids();
 
@@ -86,12 +93,23 @@ public sealed partial class FakeNotebook(List<FakePage> pages, bool dropsHeading
     public string Create(string html)
     {
         Created.Add(html);
+        if (FailNextCreate)
+        {
+            FailNextCreate = false;
+            throw new DeliveryUnknownException("OneNote said 503 to POST (fake) (not sent again: it may have been applied)");
+        }
         var number = Pages.Count + 1;
         var title = Title().Match(html).Groups[1].Value;
         var body = ReplaceFirst(html, "<p ", $"<p id=\"p:n{number}\" ");
         var counter = 0;
         body = UnnamedParagraph().Replace(body, _ => $"<p id=\"p:n{number}-{counter++}\" ");
         Pages.Add(new FakePage($"page{number}", title, title[..10], body));
+        if (LoseNextCreateReply)
+        {
+            LoseNextCreateReply = false;
+            Untitled.Add($"page{number}");
+            throw new DeliveryUnknownException("No answer to POST (fake)");
+        }
         return $"page{number}";
     }
 

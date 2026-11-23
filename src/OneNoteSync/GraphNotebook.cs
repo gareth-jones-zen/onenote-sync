@@ -128,8 +128,9 @@ public sealed class GraphNotebook : IOneNote
 
     /// <summary>Send, and return the reply's bytes. url is relative to Graph's v1.0 root ("/me/onenote/..."), as
     /// error messages quote it. A GET (no body) is retried as Read; a PATCH or POST as Write. Throws OneNoteException
-    /// for an error answer, DeliveryUnknownException when a write may have been applied but got no answer (or a 5xx,
-    /// which isn't sent again), or the network error itself for a GET that kept failing.</summary>
+    /// for an error answer (a 4xx to a write: refused, nothing changed), DeliveryUnknownException when a write may
+    /// have been applied (a 5xx, a timeout or a dropped connection after sending; M365Graph doesn't send it again),
+    /// or the network error itself for a GET that kept failing.</summary>
     private byte[] Send(HttpMethod method, string url, byte[]? body, string? contentType)
     {
         var write = method != HttpMethod.Get;
@@ -140,15 +141,19 @@ public sealed class GraphNotebook : IOneNote
         }
         catch (GraphDeliveryUnknownException error)
         {
-            throw new DeliveryUnknownException(error.Message, error);
+            throw new DeliveryUnknownException(error.Status is { } answered
+                ? $"{Said((int)answered, method, url, error.Body ?? "")} (not sent again: it may have been applied)"
+                : error.Message, error);
         }
         if (reply.IsSuccess)
             return reply.Body;
         var status = (int)reply.Status;
-        var detail = PyStr.Head(Encoding.UTF8.GetString(reply.Body), 300);
-        var message = $"OneNote said {status} to {method.Method} {(url.Length > 80 ? url[..80] : url)}: {detail}";
+        var message = Said(status, method, url, Encoding.UTF8.GetString(reply.Body));
         if (write && status >= 500)
             throw new DeliveryUnknownException($"{message} (not sent again: it may have been applied)");
         throw new OneNoteException(status, message);
     }
+
+    private static string Said(int status, HttpMethod method, string url, string body) =>
+        $"OneNote said {status} to {method.Method} {(url.Length > 80 ? url[..80] : url)}: {PyStr.Head(body, 300)}";
 }

@@ -41,7 +41,7 @@ onenote-sync pages                  the dated pages in the section, newest last
 onenote-sync pull [--dry-run]       write the newest pages to files, where they've changed
 onenote-sync status [-n N]          how complete the newest pages are (default 2)
 onenote-sync post <file.md>         show what would be posted to your section (changes nothing)
-onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand)
+onenote-sync post <file.md> --yes   post it (--force replaces a section changed by hand, or makes a page whose create went unanswered)
 onenote-sync watch                  pull on a timer; what autostart runs
 onenote-sync autostart on|off|status
 onenote-sync --version
@@ -185,12 +185,18 @@ list that follows them. That happened on a real weekly page and not on others, s
 post checks for your heading and puts it back if it's gone. OneNote's API has no delete, and an
 empty replacement is refused, so this is the only way to replace a list wholesale.
 
-**A change is never sent twice.** Reads are retried after a busy or failed answer, but a change (a
-PATCH, or a new page) is sent again only after a 429, which is refused before it's looked at, or a
-connection that never opened. After a 5xx, a timeout or a dropped connection it may have been
-applied, so it isn't resent: a lost reply to a PATCH is settled by reading the page back (step 6), and
-a lost reply to a new page stops the post and says to look in OneNote before running it again. A page
-the tool has just created can answer "not found" for a few seconds; it waits.
+**A change is never sent twice.** Reads are retried after a 429, a 5xx or a dropped connection (five
+tries in all), but a change (a PATCH, or a new page) is sent again only after a 429, which is refused
+before it's looked at, or a connection that never opened. A 4xx is a refusal: nothing changed. After
+a 5xx, a timeout or a dropped connection it may have been applied, so it isn't resent: a lost reply
+to a PATCH is settled by reading the page back (step 6), and a lost reply to a new page stops the
+post. Because such a page would be listed untitled and its id never came back, the week is recorded
+in `<state file>.unconfirmed-pages.json` (`state.unconfirmed-pages.json` beside `state.json`), and
+every later `post` for that week stops, preview included, rather than create the page twice: look
+at the bottom of the section in OneNote, and if the page is there, open it (that gives it its title)
+and run again; if it isn't, run again with `--force` to create it. The record clears itself when
+the week's page is found or made. A page the tool has just created can answer "not found" for a few
+seconds; it waits.
 
 ## Keeping it current: `watch` and `autostart`
 
